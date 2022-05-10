@@ -10,9 +10,10 @@ _capture = capmod.capture
 _frame_size = capmod.get_frame_size
 
 def capture_frame():
-    width, height = 640, 480
+    width, height = 1280, 720
+    frame_count = 60
     with open('output.raw', 'wb') as vidfile:
         buffer_size = _frame_size(width, height)
-        buffer = create_string_buffer(buffer_size)
-        _capture(buffer, width, height)
+        buffer = create_string_buffer(buffer_size*frame_count)
+        _capture(frame_count, buffer, width, height)
         vidfile.write(buffer)

@@ -28,7 +28,7 @@ struct buffer
 };
 
 static int fd = -1;
-static size_t buffer_size;
+/*static size_t buffer_size;*/
 struct buffer* buffers;
 static unsigned int n_buffers = 0;
 
@@ -82,7 +82,6 @@ static int read_frame(char* output)
   
   assert(i < n_buffers);
 
-
   strncpy(output, buffers[i].start, buf.bytesused);
 
   if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
@@ -93,42 +92,48 @@ static int read_frame(char* output)
   return 1;
 }
 
-static void fill_buffer(char* output)
+static void fill_buffer(char* output, int frame_count, size_t frame_size)
 {
-  while(1)
+  const int frame_max = frame_count;
+  while(frame_count > 0)
   {
-    fd_set fds;
-    struct timeval tv;
-    int r;
-
-    FD_ZERO(&fds);
-    FD_SET(fd, &fds);
-
-    tv.tv_sec = 2;
-    tv.tv_usec = 0;
-
-    r = select(fd+1, &fds, NULL, NULL, &tv);
-
-    if(-1 == r)
+    while(1)
     {
-      if(EINTR == errno)
+      fd_set fds;
+      struct timeval tv;
+      int r;
+
+      FD_ZERO(&fds);
+      FD_SET(fd, &fds);
+    
+      tv.tv_sec = 2;
+      tv.tv_usec = 0;
+
+      r = select(fd+1, &fds, NULL, NULL, &tv);
+
+      if(-1 == r)
       {
-	continue;
+	if(EINTR == errno)
+        {
+	  continue;
+        }
+	errno_exit("select");
       }
-      errno_exit("select");
-    }
 
-    if(0 == r)
-    {
-      fprintf(stderr, "select timeout\n");
-      exit(EXIT_FAILURE);
-    }
+      if(0 == r)
+      {
+	fprintf(stderr, "select timeout\n");
+	exit(EXIT_FAILURE);
+      }
 
-    if(read_frame(output))
-    {
-      break;
+      if(read_frame(output))
+      {
+	output += frame_size;
+	break;
+      }
     }
-  }    
+    frame_count--;
+  }
 }
 
 static void open_device(void)
@@ -260,7 +265,7 @@ static void init_userp(size_t buffer_size)
   }
 }
 
-static void init_device(int width, int height)
+static size_t init_device(int width, int height)
 {
   struct v4l2_capability cap;
   struct v4l2_cropcap cropcap;
@@ -319,6 +324,8 @@ static void init_device(int width, int height)
   }
 
   init_userp(fmt.fmt.pix.sizeimage);
+
+  return fmt.fmt.pix.sizeimage;
 }
 
 size_t get_frame_size(int width, int height)
@@ -346,12 +353,13 @@ size_t get_frame_size(int width, int height)
   return fmt.fmt.pix.sizeimage;
 }
 
-void capture(char* buffer, int width, int height)
+void capture(int frame_count, char* buffer, int width, int height)
 {
+  size_t frame_size;
   open_device();
-  init_device(width, height);
+  frame_size = init_device(width, height);
   start_capturing();
-  fill_buffer(buffer);
+  fill_buffer(buffer, frame_count, frame_size);
   stop_capturing();
   uninit_device();
   close_device();
