@@ -28,7 +28,6 @@ struct buffer
 };
 
 static int fd = -1;
-/*static size_t buffer_size;*/
 struct buffer* buffers;
 static unsigned int n_buffers = 0;
 
@@ -58,8 +57,8 @@ static int read_frame(char* output)
   CLEAR(buf);
 
   buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  buf.memory = V4L2_MEMORY_USERPTR;
-
+  buf.memory = V4L2_MEMORY_MMAP;
+  
   if(-1 == xioctl(fd, VIDIOC_DQBUF, &buf))
   {
     switch(errno)
@@ -70,19 +69,10 @@ static int read_frame(char* output)
       errno_exit("VIDIOC_DQBUF");
     }
   }
-
-  for(i = 0; i < n_buffers; i++)
-  {
-    if(buf.m.userptr == (unsigned long)buffers[i].start
-       && buf.length == buffers[i].length)
-    {
-      break;
-    }
-  }
   
   assert(i < n_buffers);
 
-  strncpy(output, buffers[i].start, buf.bytesused);
+  strncpy(output, buffers[0].start, buf.bytesused);
 
   if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
   {
@@ -142,12 +132,12 @@ static void open_device(void)
 
   if(-1 == stat(VIDEODEV, &st))
   {
-    fprintf(stderr, "Cannot identify '%s': %d\n", VIDEODEV, errno, strerror(errno));
+    fprintf(stderr, "Cannot identify '%s': %d, %s\n", VIDEODEV, errno, strerror(errno));
     exit(EXIT_FAILURE);
   }
   if(!S_ISCHR(st.st_mode))
   {
-    fprintf(stderr, "'%s'is not a device\n", VIDEODEV, errno, strerror(errno));
+    fprintf(stderr, "'%s'is not a device\n %d, %s\n", VIDEODEV, errno, strerror(errno));
     exit(EXIT_FAILURE);
   }
 
@@ -155,7 +145,7 @@ static void open_device(void)
 
   if(-1 == fd)
   {
-    fprintf(stderr, "Cannot identify '%s': %d\n", VIDEODEV, errno, strerror(errno));
+    fprintf(stderr, "Cannot identify '%s': %d, %s\n", VIDEODEV, errno, strerror(errno));
     exit(EXIT_FAILURE);
   }
 }
@@ -191,10 +181,8 @@ static void start_capturing(void)
 
     CLEAR(buf);
     buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-    buf.memory = V4L2_MEMORY_USERPTR;
+    buf.memory = V4L2_MEMORY_MMAP;
     buf.index = i;
-    buf.m.userptr = (unsigned long)buffers[i].start;
-    buf.length = buffers[i].length;
 
     if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
     {
@@ -215,32 +203,41 @@ static void uninit_device(void)
 
   for(i = 0; i < n_buffers; i++)
   {
-    free(buffers[i].start);
+    if(-1 == munmap(buffers[i].start, buffers[i].length))
+    {
+      errno_exit("munmap");
+    }
   }
 
   free(buffers);
 }
 
-static void init_userp(size_t buffer_size)
+static void init_mmap(size_t buffer_size)
 {
   struct v4l2_requestbuffers req;
   CLEAR(req);
-
+  
   req.count = 4;
   req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-  req.memory = V4L2_MEMORY_USERPTR;
+  req.memory = V4L2_MEMORY_MMAP;
 
   if(-1 == xioctl(fd, VIDIOC_REQBUFS, &req))
   {
     if(EINVAL == errno)
     {
-      fprintf(stderr, "%s does not support user pointer i/on \n", VIDEODEV);
+      fprintf(stderr, "%s does not support mmap \n", VIDEODEV);
       exit(EXIT_FAILURE);
     }
     else
     {
       errno_exit("VIDIOC_REQBUFS");
     }
+  }
+
+  if(req.count < 2)
+  {
+    fprintf(stderr, "insufficient buffer memory on %s\n", VIDEODEV);
+    exit(EXIT_FAILURE);
   }
 
   buffers = calloc(4, sizeof(*buffers));
@@ -253,16 +250,30 @@ static void init_userp(size_t buffer_size)
 
   for(n_buffers = 0; n_buffers < 4; n_buffers++)
   {
-    buffers[n_buffers].length = buffer_size;
-    buffers[n_buffers].start = malloc(buffer_size);
+    struct v4l2_buffer buf;
 
-    if(!buffers[n_buffers].start)
+    CLEAR(buf);
+
+    buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    buf.memory = V4L2_MEMORY_MMAP;
+    buf.index = n_buffers;
+
+    if(-1 == xioctl(fd, VIDIOC_QUERYBUF, &buf))
     {
-      fprintf(stderr, "out of memory \n");
-      exit(EXIT_FAILURE);
+      errno_exit("VIDIOC_QUERYBUF");
     }
 
+    buffers[n_buffers].length = buf.length;
+    buffers[n_buffers].start = mmap(NULL, buf.length,
+				    PROT_READ|PROT_WRITE,
+				    MAP_SHARED,
+				    fd, buf.m.offset);
+    if(MAP_FAILED == buffers[n_buffers].start)
+    {
+      errno_exit("mmap");
+    }	
   }
+  
 }
 
 static size_t init_device(int width, int height)
@@ -323,7 +334,7 @@ static size_t init_device(int width, int height)
     errno_exit("VIDIOC_S_FMT");
   }
 
-  init_userp(fmt.fmt.pix.sizeimage);
+  init_mmap(fmt.fmt.pix.sizeimage);
 
   return fmt.fmt.pix.sizeimage;
 }
