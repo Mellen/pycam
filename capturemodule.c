@@ -82,7 +82,7 @@ static int read_frame(char* output)
   return 1;
 }
 
-static void fill_buffer(char* output, int frame_count, size_t frame_size)
+void fill_buffer(char* output, int frame_count, size_t frame_size)
 {
   const int frame_max = frame_count;
   while(frame_count > 0)
@@ -126,7 +126,7 @@ static void fill_buffer(char* output, int frame_count, size_t frame_size)
   }
 }
 
-static void open_device(void)
+void open_device(void)
 {
   struct stat st;
 
@@ -150,7 +150,7 @@ static void open_device(void)
   }
 }
 
-static void close_device(void)
+void close_device(void)
 {
   if(-1 == close(fd))
   {
@@ -160,7 +160,7 @@ static void close_device(void)
   fd = -1;
 }
 
-static void stop_capturing(void)
+void stop_capturing(void)
 {
   enum v4l2_buf_type type;
   type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -170,7 +170,7 @@ static void stop_capturing(void)
   }  
 }
 
-static void start_capturing(void)
+void start_capturing(void)
 {
   unsigned int i;
   enum v4l2_buf_type type;
@@ -197,7 +197,7 @@ static void start_capturing(void)
   }
 }
 
-static void uninit_device(void)
+void uninit_device(void)
 {
   unsigned int i;
 
@@ -276,7 +276,7 @@ static void init_mmap(size_t buffer_size)
   
 }
 
-static size_t init_device(int width, int height)
+size_t init_device(int width, int height)
 {
   struct v4l2_capability cap;
   struct v4l2_cropcap cropcap;
