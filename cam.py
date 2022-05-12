@@ -4,7 +4,7 @@ import select
 import v4l2
 import pathlib
 from ctypes import create_string_buffer, CDLL
-lib = str(pathlib.Path().resolve())+'/capturemodule.so'
+lib = str(pathlib.Path(__file__).parent.resolve())+'/capturemodule.so'
 capmod = CDLL(lib)
 
 _capture = capmod.capture
