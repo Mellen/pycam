@@ -70,9 +70,9 @@ static int read_frame(char* output)
     }
   }
   
-  assert(i < n_buffers);
+  assert(buf.index < n_buffers);
 
-  strncpy(output, buffers[0].start, buf.bytesused);
+  strncpy(output, buffers[buf.index].start, buf.bytesused);
 
   if(-1 == xioctl(fd, VIDIOC_QBUF, &buf))
   {
